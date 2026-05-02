@@ -43,12 +43,12 @@ struct SuperBlock
 
 struct Inode
 {
-    int fileSize;
-    int blockCount;
+    int fileSize = 0;
+    int blockCount = 0;
     int directBlocks[12] = {-1};
 
     bool isDirectory = false;
-    char padding[7];
+    char padding[7] = {0}; // Padding to ensure the struct is exactly 64 bytes
 };
 static_assert(sizeof(Inode) == 64, "Inode size mismatch");
 
@@ -140,7 +140,7 @@ void allocateBlock(fstream &disk, SuperBlock &sb, Inode &in, vector<char> &data)
 
         writeLocation = sb.dataRegionStart + (freeBlockID * sb.blockSize);
         in.blockCount++;
-        if(in.blockCount >= 12) {
+        if(in.blockCount > 12) {
             cerr << "Error: Exceeded maximum direct blocks!" << endl;
             return;
         }
@@ -228,15 +228,15 @@ int main()
     vector<char> testData = {'H', 'e', 'l', 'l', 'o', ' ', 'W', 'o', 'r', 'l', 'd', '!'};
     Inode testInode;
     testInode.fileSize = testData.size();
-    writeInode(mainDisk, testInode, mySuperBlock, 0);
     allocateBlock(mainDisk, mySuperBlock, testInode, testData);
+    writeInode(mainDisk, testInode, mySuperBlock, 0);
     cout << "Initial Test File: " << testData.data() << endl;
 
     vector<char> recoveredData = recoverFile(mainDisk, mySuperBlock, testInode);
     cout << "Recovered Test File: " << recoveredData.data() << endl;
 
     // realworld test
-    ifstream realImgFile("test_image.jpg", ios::binary);
+    ifstream realImgFile("test_img.jpg", ios::binary);
     if (!realImgFile)    {
         cerr << "Image file open failed!" << endl;
         return -1;
@@ -255,7 +255,7 @@ int main()
 
     Inode recoveredInode = readInode(mainDisk, mySuperBlock, 1);
     vector<char> recoveredImgData = recoverFile(mainDisk, mySuperBlock, recoveredInode);
-    string outPath = "recovered_image.jpg";
+    string outPath = "recovered_img.jpg";
     ofstream output(outPath, ios::binary);
     output.write(recoveredImgData.data(), recoveredImgData.size());
     output.close();
