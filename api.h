@@ -7,7 +7,8 @@
 
 using namespace std;
 
-enum class AllocError {
+enum class AllocError
+{
     OK,
     EXCEEDS_MAX_FILE_SIZE,
     DISK_FULL,
@@ -39,25 +40,29 @@ struct SuperBlock
 
 struct Inode
 {
-    static constexpr int MAX_DIRECT_BLOCKS = 28; // Maximum number of direct blocks
+    static constexpr int MAX_DIRECT_BLOCKS = 24; // Maximum number of direct blocks
     int fileSize = 0;
     int blockCount = 0;
     int directBlocks[MAX_DIRECT_BLOCKS] = {-1};
+    int lastBlockUsedBytes = 0; // To track how many bytes are used in the last block
+    char fileType[16] = {0}; // For simplicity, we can store file type as a string (e.g., "txt", "jpg")
 
     bool isDirectory = false;
-    char padding[7] = {0}; // Padding to ensure the struct is exactly 128 bytes
+    char padding[3] = {0}; // Padding to ensure the struct is exactly 128 bytes
 };
 static_assert(sizeof(Inode) == 128, "Inode size mismatch");
 
 struct DirectoryEntry
 {
-    char fileName[32];
+    static constexpr int MAX_FILE_NAME_LENGTH = 60;
+    char fileName[MAX_FILE_NAME_LENGTH] = {0};
     int inodeIndex;
 };
 
-static_assert(sizeof(DirectoryEntry) == 36, "DirectoryEntry size mismatch");
+static_assert(sizeof(DirectoryEntry) == 64, "DirectoryEntry size mismatch");
 
-class BlockStorageEngine {
+class BlockStorageEngine
+{
 private:
     fstream disk;
     SuperBlock sb;
@@ -73,17 +78,18 @@ private:
     Inode readInode(int inodeIndex);
     void formatDisk();
     vector<char> recoverFile(Inode &in);
-    void printBitMap();
     void preSaveCheck(long dataSize);
-    void addDirectoryEntry(const char fileName[32], int inodeIndex);
+    void addDirectoryEntry(const char fileName[DirectoryEntry::MAX_FILE_NAME_LENGTH], int dirInodeIndex, int targetInodeIndex);
+    int findInDirectory(const char fileName[DirectoryEntry::MAX_FILE_NAME_LENGTH], int dirInodeIndex);
 
 public:
-    void createDisk(string &path, long sizeInMB);
-    void mountDisk(string &path);
+    void createDisk(const string &path, long sizeInMB);
+    void mountDisk(const string &path);
     void unmountDisk();
+    void printBitMap();
 
-    void save(string &fileName, const string &filePath);
-    void retrieve(string &fileName, const string &destPath);
+    void save(const string &fileName, const string &filePath, const string &fileType);
+    void retrieve(char fileName[DirectoryEntry::MAX_FILE_NAME_LENGTH], const string &destPath);
     void remove(const string &fileName);
     void list();
 };
