@@ -17,6 +17,10 @@ int main()
     drive.retrieve("test_img.jpg", "./assets/recovered/");
     drive.retrieve("something.txt", "./assets/recovered/");
     drive.retrieve("dump.txt", "./assets/recovered/");
+    drive.unmountDisk();
+
+    drive.createDisk("dump", 4);
+    drive.save("dump.txt", "./assets/dump.txt", "txt");
 
     return 0;
 }
