@@ -18,7 +18,7 @@ enum class AllocError
 
 struct DiskMap
 {
-    unsigned char bitmap[8];
+    unsigned char bitmap[8] = {0}; // 8 bits per byte = 8 bytes for the bitmap
 };
 
 struct SuperBlock
@@ -79,17 +79,20 @@ private:
     void formatDisk();
     vector<char> recoverFile(Inode &in);
     void preSaveCheck(long dataSize);
-    void addDirectoryEntry(const char fileName[DirectoryEntry::MAX_FILE_NAME_LENGTH], int dirInodeIndex, int targetInodeIndex);
-    int findInDirectory(const char fileName[DirectoryEntry::MAX_FILE_NAME_LENGTH], int dirInodeIndex);
+    void addDirectoryEntry(const char* fileName, int dirInodeIndex, int targetInodeIndex);
+    int findInDirectory(const char* fileName, int dirInodeIndex);
+    void updateSuperBlock();
+    void updateSbInfo();
+    void updateBitMap();
 
 public:
-    void createDisk(const string &path, long sizeInMB);
-    void mountDisk(const string &path);
+    void createDisk(const string &name, long sizeInMB);
+    void mountDisk(const string &name);
     void unmountDisk();
     void printBitMap();
 
     void save(const string &fileName, const string &filePath, const string &fileType);
-    void retrieve(char fileName[DirectoryEntry::MAX_FILE_NAME_LENGTH], const string &destPath);
+    void retrieve(const char* fileName, const string &destPath);
     void remove(const string &fileName);
     void list();
 };

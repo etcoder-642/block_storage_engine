@@ -26,10 +26,15 @@ long long fileSizeChecker(fstream &file)
 int main()
 {
     BlockStorageEngine drive;
-    drive.createDisk("myDisk3", 8);
+    drive.mountDisk("drive");
+    // drive.printBitMap();
+    // drive.createDisk("drive", 8);
 
-    drive.save("test1.jpg", "assets/test1.jpg", "jpg");
-    char recoverFile[] = "test1.jpg"; 
-    drive.retrieve(recoverFile, "./assets/recovered/");
+
+    drive.retrieve("test1.jpg", "./assets/recovered/");
+    drive.retrieve("test_img.jpg", "./assets/recovered/");
+    drive.retrieve("something.txt", "./assets/recovered/");
+    drive.retrieve("dump.txt", "./assets/recovered/");
+
     return 0;
 }
