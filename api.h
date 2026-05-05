@@ -16,14 +16,12 @@ enum class AllocError
     CANNOT_CREATE_FILE,
 };
 
-struct DiskMap
-{
-    unsigned char bitmap[8] = {0}; // 8 bits per byte = 8 bytes for the bitmap
-};
-
 struct SuperBlock
 {
-    int magicNumber = 12345;
+    static constexpr const char* DISK_EXTENSION = ".fdb";
+    static constexpr int MAGIC_NUMBER = 0x406EDB;
+
+    int magicNumber = MAGIC_NUMBER;
     int blockSize = 4096;
     int blockCount = 0;
 
@@ -66,7 +64,6 @@ class BlockStorageEngine
 private:
     fstream disk;
     SuperBlock sb;
-    DiskMap bitmap;
     AllocError allocError = AllocError::OK;
 
     bool isBlockFree(int index);

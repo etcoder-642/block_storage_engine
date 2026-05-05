@@ -42,16 +42,11 @@ string getAppDirectory()
 
 bool findFileInDirectory(const string &fileName, const string &dirPath)
 {
-    string path = dirPath; // Current directory
-    string needle = dirPath + fileName + ".bin";
-    for (const auto & entry : fs::directory_iterator(path)) {
-        // Output the path of each file or directory
-        if(entry.path() == needle)
-          return true;
-    }
-    return false;
+    fs::path needle = fs::path(dirPath) / (fileName + SuperBlock::DISK_EXTENSION);
+    return fs::exists(needle);
 }
 
+// Could not open file  .bin Error
 
 bool BlockStorageEngine::isBlockFree(int index)
 {
@@ -278,7 +273,7 @@ void BlockStorageEngine::createDisk(const string &name, long sizeInMB)
     string baseDir = getAppDirectory();
     fs::create_directories(baseDir);
 
-    string fullPath = baseDir + name + ".bin";
+    string fullPath = baseDir + name + SuperBlock::DISK_EXTENSION;
     if(findFileInDirectory(name, baseDir)){
         cerr << "This disk already exists! " << endl;
         return;
@@ -316,7 +311,7 @@ void BlockStorageEngine::mountDisk(const string &name)
         cerr << "This disk haven't been created! " << endl;
     }
 
-    string diskPath = baseDir + name + ".bin";
+    string diskPath = baseDir + name + SuperBlock::DISK_EXTENSION;
     disk.open(diskPath, ios::in | ios::out | ios::binary);
 
     long diskSize = 0;
@@ -324,7 +319,23 @@ void BlockStorageEngine::mountDisk(const string &name)
     diskSize = disk.tellg();
     disk.seekg(0, ios::beg);
     sb.blockCount = diskSize / sb.blockSize;
+
+    SuperBlock tempSb;
+    disk.read(reinterpret_cast<char *>(&tempSb), sizeof(SuperBlock));
+    if(tempSb.magicNumber != SuperBlock::MAGIC_NUMBER){
+        cerr << "Error: Disk file is corrupted or not a valid Block Storage Engine disk!" << endl;
+        disk.close();
+        return;
+    }
     this->updateSbInfo();
+}
+
+void BlockStorageEngine::unmountDisk()
+{
+    if (disk.is_open())
+    {
+        disk.close();
+    }
 }
 
 int BlockStorageEngine::findInDirectory(const char *fileName, int dirInodeIndex)
