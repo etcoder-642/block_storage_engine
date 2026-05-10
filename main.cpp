@@ -10,18 +10,10 @@ using namespace std;
 int main()
 {
     BlockStorageEngine drive;
-    drive.mountDisk("drive");
+    drive.mountDisk("test");
 
-
-    drive.retrieve("test1.jpg", "./assets/recovered");
-    drive.retrieve("test_img.jpg", "./assets/recovered");
-    drive.retrieve("something.txt", "./assets/recovered");
-    drive.retrieve("dump.txt", "./assets/recovered");
-    drive.retrieve("image.jpg", "./assets/recovered");
-    drive.unmountDisk();
-
-    // drive.createDisk("dump", 4);
-    // drive.save("dump.txt", "./assets/dump.txt");
+    // drive.save("test1mb.txt", "./assets/test1mb.txt");
+    drive.retrieve("test1mb.txt", "./assets/recovered");
 
     return 0;
 }

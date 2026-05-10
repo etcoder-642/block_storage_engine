@@ -44,6 +44,7 @@ struct Inode
     int directBlocks[MAX_DIRECT_BLOCKS] = {-1};
     int lastBlockUsedBytes = 0; // To track how many bytes are used in the last block
 
+    // points to a block that contains blockIndexes of data.
     int indirectBlocks;
     bool isDirectory = false;
     char padding[3] = {0}; // Padding to ensure the struct is exactly 128 bytes
@@ -75,13 +76,13 @@ private:
     void writeDataToBlock(int blockID, char* dataPtr, int amountToWrite, int& bytesRemaining);
     void writeInode(Inode &in, int inodeIndex);
     Inode readInode(int inodeIndex);
-    DirectoryEntry BlockStorageEngine::readDirectoryEntry(int dirEntryIndex, int blockIndex);
+    DirectoryEntry readDirectoryEntry(int dirEntryIndex, int blockIndex);
     void formatDisk();
     vector<char> recoverFile(Inode &in);
     void preSaveCheck(long dataSize);
     void addDirectoryEntry(const char* fileName, int dirInodeIndex, int targetInodeIndex);
     int findInDirectory(const char* fileName, int dirInodeIndex);
-    int BlockStorageEngine::traversePath(vector<string> path);
+    int traversePath(vector<string> path);
     void updateSuperBlock();
     void updateSbInfo();
     void updateBitMap();
@@ -93,9 +94,9 @@ public:
     void printBitMap();
 
     void save(const string &fileName, const string &filePath);
-    void remove(const string &fileName);
+    // void remove(const string &fileName);
     void createDirectory(const string &path);
-    void removeDirectory(const string &path); // removes a directory with all it's contents
+    // void removeDirectory(const string &path); // removes a directory with all it's contents
     void retrieve(const char* fileName, const string &destPath);
     void remove(const string &fileName);
     void list();
