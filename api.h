@@ -38,13 +38,13 @@ struct SuperBlock
 
 struct Inode
 {
-    static constexpr int MAX_DIRECT_BLOCKS = 24; // Maximum number of direct blocks
+    static constexpr int MAX_DIRECT_BLOCKS = 27; // Maximum number of direct blocks
     int fileSize = 0;
     int blockCount = 0;
     int directBlocks[MAX_DIRECT_BLOCKS] = {-1};
     int lastBlockUsedBytes = 0; // To track how many bytes are used in the last block
-    char fileType[16] = {0}; // For simplicity, we can store file type as a string (e.g., "txt", "jpg")
 
+    int indirectBlocks;
     bool isDirectory = false;
     char padding[3] = {0}; // Padding to ensure the struct is exactly 128 bytes
 };
@@ -71,13 +71,17 @@ private:
     long calculateTotalSize();
     int findFreeBlock();
     void allocateBlock(Inode &in, vector<char> &data);
+    void allocateIndirectBlock(Inode &in, vector<char> &data, int bytesRemaining);
+    void writeDataToBlock(int blockID, char* dataPtr, int amountToWrite, int& bytesRemaining);
     void writeInode(Inode &in, int inodeIndex);
     Inode readInode(int inodeIndex);
+    DirectoryEntry BlockStorageEngine::readDirectoryEntry(int dirEntryIndex, int blockIndex);
     void formatDisk();
     vector<char> recoverFile(Inode &in);
     void preSaveCheck(long dataSize);
     void addDirectoryEntry(const char* fileName, int dirInodeIndex, int targetInodeIndex);
     int findInDirectory(const char* fileName, int dirInodeIndex);
+    int BlockStorageEngine::traversePath(vector<string> path);
     void updateSuperBlock();
     void updateSbInfo();
     void updateBitMap();
@@ -88,7 +92,10 @@ public:
     void unmountDisk();
     void printBitMap();
 
-    void save(const string &fileName, const string &filePath, const string &fileType);
+    void save(const string &fileName, const string &filePath);
+    void remove(const string &fileName);
+    void createDirectory(const string &path);
+    void removeDirectory(const string &path); // removes a directory with all it's contents
     void retrieve(const char* fileName, const string &destPath);
     void remove(const string &fileName);
     void list();
