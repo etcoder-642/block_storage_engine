@@ -10,6 +10,10 @@ namespace fs = std::filesystem;
 
 using namespace std;
 
+
+
+// HELPER FUNCTIONS
+// returns a specific directory where disk will be stored (e.g. "/.local/share/BlockEngine/" in Linux)
 string getAppDirectory()
 {
 #ifdef _WIN32
@@ -59,14 +63,26 @@ vector<string> parseString(string str, char delimiter)
     return res;
 }
 
+string joinString(vector<string> vstr, char delimiter)
+{
+    string res = "";
+    for(size_t i = 0; i < vstr.size(); i++)
+    {
+        res += vstr[i];
+        res += delimiter;
+    }
+    return res;
+}
+
 bool findFileInDirectory(const string &fileName, const string &dirPath)
 {
     fs::path needle = fs::path(dirPath) / (fileName + SuperBlock::DISK_EXTENSION);
     return fs::exists(needle);
 }
 
-// Could not open file  .bin Error
 
+
+// BITMAP OPERATIONS
 bool BlockStorageEngine::isBlockFree(int index)
 {
     disk.clear();
@@ -85,30 +101,69 @@ bool BlockStorageEngine::isBlockFree(int index)
         return true;
 }
 
-void BlockStorageEngine::setBlockOccupied(int index)
+// flips the bit at bitPosition in the bitmap byte to mark block as occupied
+void BlockStorageEngine::setBlockOccupied(int bitPosition)
 {
     disk.flush();
     disk.clear();
-    int maskingIndex = index % 8; // Determine which byte in the bitmap to check
+    int maskingPos = bitPosition % 8; // Determine which byte in the bitmap to check
     unsigned char bitnum;
-    short mask = 1 << maskingIndex;
-    disk.seekg(sb.bitmapStart + (index / 8), ios::beg); // Move to the correct byte in the bitmap
+    short mask = 1 << maskingPos;
+    disk.seekg(sb.bitmapStart + (bitPosition / 8), ios::beg); // Move to the correct byte in the bitmap
 
     disk.read(reinterpret_cast<char *>(&bitnum), sizeof(unsigned char));
     bitnum |= mask;
-    disk.seekp(sb.bitmapStart + (index / 8), ios::beg);
+    disk.seekp(sb.bitmapStart + (bitPosition / 8), ios::beg);
     disk.write(reinterpret_cast<char *>(&bitnum), sizeof(unsigned char));
     disk.flush(); // Ensure the updated bitmap is written to disk
 }
+
+
+// DISK GEOMERTY AND FORMATTING
 // calculates the total size of the drive
 long BlockStorageEngine::calculateTotalSize()
 {
     long totalSize = sizeof(SuperBlock) + sb.blockSize * sb.blockCount; // Size of all blocks
     totalSize += sb.bitmapSize;                                         // Add bitmap size
-    totalSize += sb.inodeSize * sb.inodeCount;                          // Add size of all inodes
+    totalSize += sizeof(Inode) * sb.inodeCount;                          // Add size of all inodes
     return totalSize;
 }
 
+// fills entire disk with 0's
+void BlockStorageEngine::formatDisk()
+{
+    disk.seekp(0, ios::beg);
+    char zero = 0;
+    for (long i = 0; i < calculateTotalSize(); i++)
+    {
+        disk.write(&zero, 1);
+    }
+}
+
+// syncs in-memory superBlock data with the disk
+void BlockStorageEngine::syncSuperBlock()
+{
+    disk.seekp(0, ios::beg);
+    disk.write(reinterpret_cast<char *>(&sb), sizeof(SuperBlock));
+    disk.flush();
+}
+
+// recalculates all superblock fields — because properties are interdependent
+void BlockStorageEngine::updateSbInfo()
+{
+    sb.bitmapStart = sizeof(SuperBlock); // Bitmap starts immediately after the SuperBlock
+    sb.bitmapSize = sb.blockCount / 8;
+    sb.inodeTableStart = sb.bitmapStart + sb.bitmapSize;
+    sb.dataRegionStart = sb.inodeTableStart + (sizeof(Inode) * sb.inodeCount);
+    sb.freeBlockCount = sb.blockCount;
+
+    sb.inodeTableStart = sb.bitmapStart + sb.bitmapSize;
+    sb.dataRegionStart = sb.inodeTableStart + (sizeof(Inode) * sb.inodeCount);
+}
+
+
+
+// ALLOCATION
 int BlockStorageEngine::findFreeBlock()
 {
     int index = 0;
@@ -128,13 +183,16 @@ int BlockStorageEngine::findFreeBlock()
     return index;
 }
 
-void BlockStorageEngine::writeDataToBlock(int blockID, char *dataPtr, int amountToWrite, int &bytesRemaining)
+int BlockStorageEngine::findFreeInode()
 {
-    long writeLocation = sb.dataRegionStart + (blockID * sb.blockSize);
-    disk.seekp(writeLocation, ios::beg);
-    disk.write(dataPtr, amountToWrite);
-    bytesRemaining -= amountToWrite;
-    sb.freeBlockCount--;
+    for(size_t i = 0; i < sb.inodeCount; i ++){
+        Inode in = readInode(i);
+        if(!in.isAllocated){
+            return i;
+        }
+    }
+    if (sb.allocatedInodeCount >= sb.inodeCount) return -1;
+    return sb.allocatedInodeCount; // return next free slot
 }
 
 void BlockStorageEngine::allocateBlock(Inode &in, vector<char> &data)
@@ -216,67 +274,17 @@ void BlockStorageEngine::allocateIndirectBlock(Inode &in, vector<char> &data, in
     disk.flush();
 }
 
-void BlockStorageEngine::writeInode(Inode &in, int inodeIndex)
-{
-    long pos = sb.inodeTableStart + (inodeIndex * sb.inodeSize);
-    disk.seekp(pos, ios::beg);
-    disk.write(reinterpret_cast<char *>(&in), sb.inodeSize);
-    disk.flush();
-}
 
+
+// READ FROM DISK
 Inode BlockStorageEngine::readInode(int inodeIndex)
 {
     Inode myInode;
-    long pos = sb.inodeTableStart + (inodeIndex * sb.inodeSize);
+    long pos = sb.inodeTableStart + (inodeIndex * sizeof(Inode));
     disk.seekg(pos, ios::beg);
-    disk.read(reinterpret_cast<char *>(&myInode), sb.inodeSize);
+    disk.read(reinterpret_cast<char *>(&myInode), sizeof(Inode));
     disk.clear();
     return myInode;
-}
-
-/* A function to read a directoryEntry
-Arguments:
-   - blockIndex = on which index is the dirEntry located, expects the blockIndex of where the dirEntry is located
-   - dirEntryIndex = the location of the dirEntry in the specified block (only can have values 0-63 cause a block can have 64 dirEntries)
-*/
-
-DirectoryEntry BlockStorageEngine::readDirectoryEntry(int dirEntryIndex, int blockIndex)
-{
-    disk.clear();
-    DirectoryEntry myDirEntry;
-    long pos = sb.dataRegionStart + (sb.blockSize * blockIndex) + (dirEntryIndex * sizeof(DirectoryEntry));
-    disk.seekg(pos, ios::beg);
-    disk.read(reinterpret_cast<char *>(&myDirEntry), sizeof(myDirEntry));
-    return myDirEntry;
-}
-
-void BlockStorageEngine::updateSuperBlock()
-{
-    disk.seekp(0, ios::beg);
-    disk.write(reinterpret_cast<char *>(&sb), sizeof(SuperBlock));
-    disk.flush();
-}
-
-void BlockStorageEngine::updateSbInfo()
-{
-    sb.bitmapStart = sizeof(SuperBlock); // Bitmap starts immediately after the SuperBlock
-    sb.bitmapSize = sb.blockCount / 8;
-    sb.inodeTableStart = sb.bitmapStart + sb.bitmapSize;
-    sb.dataRegionStart = sb.inodeTableStart + (sb.inodeSize * sb.inodeCount);
-    sb.freeBlockCount = sb.blockCount;
-
-    sb.inodeTableStart = sb.bitmapStart + sb.bitmapSize;
-    sb.dataRegionStart = sb.inodeTableStart + (sb.inodeSize * sb.inodeCount);
-}
-
-void BlockStorageEngine::formatDisk()
-{
-    disk.seekp(0, ios::beg);
-    char zero = 0;
-    for (long i = 0; i < calculateTotalSize(); i++)
-    {
-        disk.write(&zero, 1);
-    }
 }
 
 vector<char> BlockStorageEngine::recoverFile(Inode &in)
@@ -323,22 +331,97 @@ vector<char> BlockStorageEngine::recoverFile(Inode &in)
     return recoveredFile;
 }
 
-void BlockStorageEngine::printBitMap()
+DirectoryEntry BlockStorageEngine::readDirectoryEntry(int dirEntryIndex, int blockIndex)
+{
+    disk.clear();
+    DirectoryEntry myDirEntry;
+    long pos = sb.dataRegionStart + (sb.blockSize * blockIndex) + (dirEntryIndex * sizeof(DirectoryEntry));
+    disk.seekg(pos, ios::beg);
+    disk.read(reinterpret_cast<char *>(&myDirEntry), sizeof(myDirEntry));
+    return myDirEntry;
+}
+
+
+
+// WRITE TO DISK
+void BlockStorageEngine::writeDataToBlock(int blockID, char *dataPtr, int amountToWrite, int &bytesRemaining)
+{
+    long writeLocation = sb.dataRegionStart + (blockID * sb.blockSize);
+    disk.seekp(writeLocation, ios::beg);
+    disk.write(dataPtr, amountToWrite);
+    bytesRemaining -= amountToWrite;
+    sb.freeBlockCount--;
+}
+
+void BlockStorageEngine::writeInode(Inode &in, int inodeIndex)
+{
+    long pos = sb.inodeTableStart + (inodeIndex * sizeof(Inode));
+    disk.seekp(pos, ios::beg);
+    disk.write(reinterpret_cast<char *>(&in), sizeof(Inode));
+    disk.flush();
+}
+
+// writes a new directory entry into the parent directory's block
+void BlockStorageEngine::addDirectoryEntry(const char *fileName, int dirInodeIndex, int targetInodeIndex)
 {
     disk.flush();
     disk.clear();
-
-    cout << "Bitmap Status: " << endl;
-    for (int i = 0; i < sb.blockCount; i++)
+    Inode in = readInode(dirInodeIndex);
+    if (!in.isDirectory)
     {
-        cout << (isBlockFree(i) ? "0" : "1") << ' ';
-        if ((i + 1) % 64 == 0)
-        {
-            cout << endl; // New line after every 64 blocks for better readability
-        }
+        cerr << "Error: Inode at index " << dirInodeIndex << " is not a directory!" << endl;
+        return;
     }
+
+    if (findInDirectory(fileName, dirInodeIndex) != -1)
+    {
+        cerr << "Error: File with name '" << fileName << "' already exists in directory with inode index " << dirInodeIndex << "!" << endl;
+        return;
+    }
+
+    if(in.blockCount >= Inode::MAX_DIRECT_BLOCKS){
+        cout << "Error: Directory has reached maximum entry limits!" << endl;
+        return;
+    }
+
+    DirectoryEntry newEntry;
+    strncpy(newEntry.fileName, fileName, sizeof(newEntry.fileName) - 1);
+    newEntry.fileName[sizeof(newEntry.fileName) - 1] = '\0'; // Ensure null-termination
+    newEntry.inodeIndex = targetInodeIndex;
+
+    long byteOffset;
+    if (in.blockCount == 0 || in.lastBlockUsedBytes == sb.blockSize)
+    {
+        int blockId = findFreeBlock();
+        if (blockId == -1)
+        {
+            cerr << "Error: Disk is full, cannot allocate block for new directory entry!" << endl;
+            return;
+        }
+        in.directBlocks[in.blockCount] = blockId;
+        in.blockCount++;
+        in.lastBlockUsedBytes = 0;
+        byteOffset = sb.dataRegionStart + (blockId * sb.blockSize);
+        sb.freeBlockCount--;
+    }
+    else
+    {
+        int currentBlock = in.directBlocks[in.blockCount - 1];
+        byteOffset = sb.dataRegionStart + (currentBlock * sb.blockSize) + in.lastBlockUsedBytes;
+    }
+    disk.seekp(byteOffset, ios::beg);
+    disk.write(reinterpret_cast<char *>(&newEntry), sizeof(newEntry));
+    disk.flush();
+
+    in.lastBlockUsedBytes += sizeof(newEntry);
+    in.referenceCount++;
+    writeInode(in, dirInodeIndex);
+    syncSuperBlock();
 }
 
+
+
+// VALIDATION
 void BlockStorageEngine::preSaveCheck(long dataSize) // In Bytes
 {
     // checking for total blocks needed
@@ -361,83 +444,15 @@ void BlockStorageEngine::preSaveCheck(long dataSize) // In Bytes
     }
 }
 
-void BlockStorageEngine::createDisk(const string &name, long sizeInMB)
-{
-    string baseDir = getAppDirectory();
-    fs::create_directories(baseDir);
 
-    string fullPath = baseDir + name + SuperBlock::DISK_EXTENSION;
-    if (findFileInDirectory(name, baseDir))
-    {
-        cerr << "This disk already exists! " << endl;
-        return;
-    }
-    {
-        ofstream create(fullPath, ios::binary);
-    }
-    disk.open(fullPath, ios::in | ios::out | ios::binary | ios::trunc);
 
-    if (!disk.is_open())
-    {
-        allocError = AllocError::CANNOT_CREATE_FILE;
-        cerr << "Error: Could not create disk file at " << fullPath << endl;
-        return;
-    }
-
-    cout << "Disk created at: " << fullPath << endl;
-    sb.blockCount = (sizeInMB * 1024 * 1024) / sb.blockSize;
-    this->updateSbInfo();
-    this->formatDisk();
-
-    Inode rootDir;
-    rootDir.isDirectory = true;
-    sb.allocatedInodeCount++;     // Account for root directory inode
-    this->writeInode(rootDir, 0); // Write root directory inode at index 0
-    this->updateSuperBlock();
-    disk.flush();
-}
-
-void BlockStorageEngine::mountDisk(const string &name)
-{
-    string baseDir = getAppDirectory();
-    if (!findFileInDirectory(name, baseDir))
-    {
-        cerr << "This disk haven't been created! " << endl;
-    }
-
-    string diskPath = baseDir + name + SuperBlock::DISK_EXTENSION;
-    disk.open(diskPath, ios::in | ios::out | ios::binary);
-
-    long diskSize = 0;
-    disk.seekg(0, ios::end);
-    diskSize = disk.tellg();
-    disk.seekg(0, ios::beg);
-    sb.blockCount = diskSize / sb.blockSize;
-
-    SuperBlock tempSb;
-    disk.read(reinterpret_cast<char *>(&tempSb), sizeof(SuperBlock));
-    if (tempSb.magicNumber != SuperBlock::MAGIC_NUMBER)
-    {
-        cerr << "Error: Disk file is corrupted or not a valid Block Storage Engine disk!" << endl;
-        disk.close();
-        return;
-    }
-    this->updateSbInfo();
-}
-
-void BlockStorageEngine::unmountDisk()
-{
-    if (disk.is_open())
-    {
-        disk.close();
-    }
-}
-
+// SEARCH AND TRAVERSAL
+// searches for a file inside a directory, returns the inode index of the file, -1 if not found
 int BlockStorageEngine::findInDirectory(const char *fileName, int dirInodeIndex)
 {
     disk.clear();
 
-    Inode in = this->readInode(dirInodeIndex);
+    Inode in = readInode(dirInodeIndex);
     if (!in.isDirectory)
     {
         cerr << "Error: Inode at index " << dirInodeIndex << " is not a directory!" << endl;
@@ -466,62 +481,146 @@ int BlockStorageEngine::findInDirectory(const char *fileName, int dirInodeIndex)
     return -1; // File not found in the directory
 }
 
-void BlockStorageEngine::addDirectoryEntry(const char *fileName, int dirInodeIndex, int targetInodeIndex)
+// traverses a directory path and returns the Inode Index of the final dir
+int BlockStorageEngine::traversePath(vector<string> path)
+{
+    disk.clear();
+    int curInodeIndex = 0;
+    for (int i = 0; i < path.size(); i++)
+    {
+        Inode in = this->readInode(curInodeIndex);
+        if (!in.isDirectory)
+            return -1;
+        for (int j = 0; j < in.blockCount; j++)
+        {
+            int blockIndex = in.directBlocks[j];
+            bool found = false;
+            for (int k = 0; k < sb.blockSize / sizeof(DirectoryEntry); k++)
+            {
+                DirectoryEntry ent = this->readDirectoryEntry(k, blockIndex);
+                if (strncmp(ent.fileName, path[i].c_str(), sizeof(ent.fileName)) == 0)
+                {
+                    curInodeIndex = ent.inodeIndex;
+                    found = true;
+                    break;
+                }
+            }
+            if (found)
+                break;
+            if (!found && j == in.blockCount - 1)
+                return -1;
+        }
+    }
+    return curInodeIndex;
+}
+
+int BlockStorageEngine::findDirEntry(int inodeIndex, const char* fileName)
+{
+    int dirEntryIndex = 0;
+    Inode in = readInode(inodeIndex);
+    if(!in.isDirectory){
+        cout << "Inode isn't a directory" << endl;
+        return;
+    }
+}
+
+
+// PUBLIC METHODS
+
+
+void BlockStorageEngine::printBitMap()
 {
     disk.flush();
     disk.clear();
-    Inode in = this->readInode(dirInodeIndex);
-    if (!in.isDirectory)
-    {
-        cerr << "Error: Inode at index " << dirInodeIndex << " is not a directory!" << endl;
-        return;
-    }
 
-    if (this->findInDirectory(fileName, dirInodeIndex) != -1)
+    cout << "Bitmap Status: " << endl;
+    for (int i = 0; i < sb.blockCount; i++)
     {
-        cerr << "Error: File with name '" << fileName << "' already exists in directory with inode index " << dirInodeIndex << "!" << endl;
-        return;
-    }
-
-    DirectoryEntry newEntry;
-    strncpy(newEntry.fileName, fileName, sizeof(newEntry.fileName) - 1);
-    newEntry.fileName[sizeof(newEntry.fileName) - 1] = '\0'; // Ensure null-termination
-    newEntry.inodeIndex = targetInodeIndex;
-
-    long byteOffset;
-    if (in.blockCount == 0 || in.lastBlockUsedBytes == sb.blockSize)
-    {
-        int blockId = this->findFreeBlock();
-        if (blockId == -1)
+        cout << (isBlockFree(i) ? "0" : "1") << ' ';
+        if ((i + 1) % 64 == 0)
         {
-            cerr << "Error: Disk is full, cannot allocate block for new directory entry!" << endl;
-            return;
+            cout << endl; // New line after every 64 blocks for better readability
         }
-        in.directBlocks[in.blockCount] = blockId;
-        in.blockCount++;
-        in.lastBlockUsedBytes = 0;
-        byteOffset = sb.dataRegionStart + (blockId * sb.blockSize);
-        sb.freeBlockCount--;
     }
-    else
-    {
-        int currentBlock = in.directBlocks[in.blockCount - 1];
-        byteOffset = sb.dataRegionStart + (currentBlock * sb.blockSize) + in.lastBlockUsedBytes;
-    }
-    disk.seekp(byteOffset, ios::beg);
-    disk.write(reinterpret_cast<char *>(&newEntry), sizeof(newEntry));
-    disk.flush();
-
-    in.lastBlockUsedBytes += sizeof(newEntry);
-    this->writeInode(in, dirInodeIndex);
-    this->updateSuperBlock();
 }
 
+// CREATE / INITIATE / DISCONTINUE A DISK INSTANCE
+void BlockStorageEngine::createDisk(const string &name, long sizeInMB)
+{
+    string baseDir = getAppDirectory();
+    fs::create_directories(baseDir);
+
+    string fullPath = baseDir + name + SuperBlock::DISK_EXTENSION;
+    if (findFileInDirectory(name, baseDir))
+    {
+        cerr << "This disk already exists! " << endl;
+        return;
+    }
+    {
+        ofstream create(fullPath, ios::binary);
+    }
+    disk.open(fullPath, ios::in | ios::out | ios::binary | ios::trunc);
+
+    if (!disk.is_open())
+    {
+        allocError = AllocError::CANNOT_CREATE_FILE;
+        cerr << "Error: Could not create disk file at " << fullPath << endl;
+        return;
+    }
+
+    cout << "Disk created at: " << fullPath << endl;
+    sb.blockCount = (sizeInMB * 1024 * 1024) / sb.blockSize;
+    updateSbInfo();
+    formatDisk();
+
+    createDirectory("root");
+    syncSuperBlock();
+    disk.flush();
+}
+
+void BlockStorageEngine::mountDisk(const string &name)
+{
+    string baseDir = getAppDirectory();
+    if (!findFileInDirectory(name, baseDir))
+    {
+        cerr << "This disk haven't been created! " << endl;
+    }
+
+    string diskPath = baseDir + name + SuperBlock::DISK_EXTENSION;
+    disk.open(diskPath, ios::in | ios::out | ios::binary);
+
+    long diskSize = 0;
+    disk.seekg(0, ios::end);
+    diskSize = disk.tellg();
+    disk.seekg(0, ios::beg);
+    sb.blockCount = diskSize / sb.blockSize;
+
+    SuperBlock tempSb;
+    disk.read(reinterpret_cast<char *>(&tempSb), sizeof(SuperBlock));
+    if (tempSb.magicNumber != SuperBlock::MAGIC_NUMBER)
+    {
+        cerr << "Error: Disk file is corrupted or not a valid Block Storage Engine disk!" << endl;
+        disk.close();
+        return;
+    }
+}
+
+void BlockStorageEngine::unmountDisk()
+{
+    if (disk.is_open())
+    {
+        disk.close();
+    }
+}
+
+
+
+// CREATION OR DELETION OF FILES AND DIR'S
 void BlockStorageEngine::save(const string &fileName, const string &filePath)
 {
     vector<string> parsedPath = parseString(fileName, '/');
     vector<string> parentPath(parsedPath.begin(), parsedPath.end() - 1);
-    int finalDirInodeIndex = this->traversePath(parentPath);
+    int finalDirInodeIndex = traversePath(parentPath);
     if (finalDirInodeIndex == -1)
     {
         cerr << "Error: Invalid Path" << endl;
@@ -552,7 +651,7 @@ void BlockStorageEngine::save(const string &fileName, const string &filePath)
     fileToSave.close();
 
     // make a check if the fileSize fits to the maximum size allowed by the disk and if the disk have enough free space
-    this->preSaveCheck(fileSize);
+    preSaveCheck(fileSize);
     if (allocError != AllocError::OK)
     {
         if (allocError == AllocError::DISK_FULL)
@@ -571,74 +670,18 @@ void BlockStorageEngine::save(const string &fileName, const string &filePath)
     fileInode.fileSize = buffer.size();
 
     // find and allocate free blocks for the fileInode based on the it's file size
-    this->allocateBlock(fileInode, buffer);
-    sb.allocatedInodeCount++;
+    allocateBlock(fileInode, buffer);
 
     // update info saved in the disk
-    this->updateSuperBlock();
-    this->writeInode(fileInode, sb.allocatedInodeCount - 1);
+    syncSuperBlock();
+    int freeInodeIndex = findFreeInode();
+    writeInode(fileInode, freeInodeIndex);
+    sb.allocatedInodeCount++;
 
     // add the file entry to it's parent folder
-    this->addDirectoryEntry(rfile.c_str(), finalDirInodeIndex, sb.allocatedInodeCount - 1); // Add entry to root directory
+    addDirectoryEntry(rfile.c_str(), finalDirInodeIndex, freeInodeIndex); // Add entry to root directory
     cout << "File '" << rfile << "' saved successfully!" << endl;
 }
-
-void BlockStorageEngine::retrieve(const char *fileName, const string &destPath)
-{
-    int inodeIndex = this->findInDirectory(fileName, 0);
-    if (inodeIndex == -1)
-    {
-        cerr << "Error: File '" << fileName << "' not found in root directory!" << endl;
-        return;
-    }
-    Inode recoveryInode = this->readInode(inodeIndex);
-
-    vector<char> fileData = this->recoverFile(recoveryInode);
-    fs::path outPath = fs::path(destPath) / fileName;
-    ofstream output(outPath, ios::binary);
-    if (!output.is_open())
-    {
-        cerr << "Error: Could not create output file at " << outPath << endl;
-        return;
-    }
-    output.write(fileData.data(), fileData.size());
-    output.close();
-}
-
-// traverses a directory path and returns the Inode Index of the final dir
-int BlockStorageEngine::traversePath(vector<string> path)
-{
-    disk.clear();
-    int curInodeIndex = 0;
-    for (int i = 0; i < path.size(); i++)
-    {
-        Inode in = this->readInode(curInodeIndex);
-        if (!in.isDirectory)
-            return -1;
-        for (int j = 0; j < in.blockCount; j++)
-        {
-            int blockIndex = in.directBlocks[j];
-            bool found = false;
-            for (int k = 0; k < sb.blockSize / sizeof(DirectoryEntry); k++)
-            {
-                DirectoryEntry ent = this->readDirectoryEntry(k, blockIndex);
-                if (ent.fileName == path[i])
-                {
-                    curInodeIndex = ent.inodeIndex;
-                    found = true;
-                    break;
-                }
-            }
-            if (found)
-                break;
-            if (!found && j == in.blockCount - 1)
-                return -1;
-        }
-    }
-    return curInodeIndex;
-}
-
-// work on the create directory function for tommorrow
 
 void BlockStorageEngine::createDirectory(const string &path)
 {
@@ -655,8 +698,99 @@ void BlockStorageEngine::createDirectory(const string &path)
 
     Inode dir;
     dir.isDirectory = true;
-    sb.allocatedInodeCount++;
-    this->writeInode(dir, sb.allocatedInodeCount - 1);
+    int freeInodeIndex = findFreeInode();
+    this->writeInode(dir, freeInodeIndex);
     this->addDirectoryEntry(lastElem.c_str(), finalDirInodeIndex, sb.allocatedInodeCount - 1);
+    sb.allocatedInodeCount++;
     disk.flush();
+}
+
+void BlockStorageEngine::remove(const string &fileName)
+{
+    vector<string> parsedPath = parseString(fileName, '/');
+    vector<string> parentPath(parsedPath.begin(), parsedPath.end() - 1);
+    int finalDirInodeIndex = traversePath(parentPath);
+    if (finalDirInodeIndex == -1)
+    {
+        cerr << "Error: Invalid Path" << endl;
+        return;
+    }
+    string file = parsedPath[parsedPath.size() - 1];
+
+    int inodeIndex = findInDirectory(file.c_str(), finalDirInodeIndex);
+    Inode in = readInode(inodeIndex);
+    in.referenceCount--;
+    if(in.referenceCount == 0){
+
+    }else{
+        
+    }
+}
+
+
+
+// RETRIEVAL OF FILES
+void BlockStorageEngine::retrieve(const string &fileName, const string &destPath)
+{
+    vector<string> parsedPath = parseString(fileName, '/');
+    vector<string> parentPath(parsedPath.begin(), parsedPath.end() - 1);
+    int finalDirInodeIndex = traversePath(parentPath);
+    if (finalDirInodeIndex == -1)
+    {
+        cerr << "Error: Invalid Path" << endl;
+        return;
+    }
+    string rfile = parsedPath[parsedPath.size() - 1];
+
+    int inodeIndex = this->findInDirectory(rfile.c_str(), finalDirInodeIndex);
+    if (inodeIndex == -1)
+    {
+        cerr << "Error: File '" << fileName << "' not found in directory index: " << finalDirInodeIndex << "!" << endl;
+        return;
+    }
+    Inode recoveryInode = readInode(inodeIndex);
+
+    vector<char> fileData = recoverFile(recoveryInode);
+    fs::path outPath = fs::path(destPath) / fileName;
+    ofstream output(outPath, ios::binary);
+    if (!output.is_open())
+    {
+        cerr << "Error: Could not create output file at " << outPath << endl;
+        return;
+    }
+    output.write(fileData.data(), fileData.size());
+    output.close();
+}
+
+
+
+// AUXILIARY FUNCTIONS
+
+void BlockStorageEngine::link(const char *nfile, const char *efile)
+{
+    disk.clear();
+    // efile: existing file, nfile: new file name
+    vector<string> ePath = parseString(efile, '/');
+    vector<string> e_parentPath(ePath.begin(), ePath.end() - 1);
+    int e_dirInodeIndex = traversePath(e_parentPath);
+    if(e_dirInodeIndex == -1){
+        cout << "The specified directory doesn't exist!" << endl;
+        return;
+    }
+    string efileName = ePath[ePath.size() -1 ];
+    int e_inodeIndex = findInDirectory(efileName.c_str(), e_dirInodeIndex);
+    if(e_inodeIndex == -1){
+        cout << "The file doesn't exist in the specified directory!" << endl;
+        return;
+    }
+
+    vector<string> nPath = parseString(nfile, '/');
+    vector<string> n_parentPath(nPath.begin(), nPath.end() - 1);
+    int n_dirInodeIndex = traversePath(n_parentPath);
+    if(n_dirInodeIndex == -1){
+        cout << "The specified directory for the new file doesn't exist!" << endl;
+        return;
+    }
+    string nfileName = ePath[ePath.size() -1 ];
+    addDirectoryEntry(nfileName.c_str(), n_dirInodeIndex, e_inodeIndex);
 }
