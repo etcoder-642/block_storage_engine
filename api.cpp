@@ -133,10 +133,10 @@ long BlockStorageEngine::calculateTotalSize()
 void BlockStorageEngine::formatDisk()
 {
     disk.seekp(0, ios::beg);
-    char zero = 0;
+    char zero[sb.blockSize] = {0};
     for (long i = 0; i < calculateTotalSize(); i++)
     {
-        disk.write(&zero, 1);
+        disk.write(reinterpret_cast<char*>(&zero), sb.blockSize);
     }
 }
 
@@ -516,12 +516,23 @@ int BlockStorageEngine::traversePath(vector<string> path)
 
 int BlockStorageEngine::findDirEntry(int inodeIndex, const char* fileName)
 {
-    int dirEntryIndex = 0;
+    int dirEntryCounter = -1;
     Inode in = readInode(inodeIndex);
     if(!in.isDirectory){
         cout << "Inode isn't a directory" << endl;
-        return;
+        return -1;
     }
+    for(int i = 0; i < in.blockCount; i++)
+    {
+        for(int j = 0; j < sb.blockSize / sizeof(DirectoryEntry); j++){
+            dirEntryCounter++;
+            DirectoryEntry ent = readDirectoryEntry(j, in.directBlocks[i]);
+            if(strncmp(ent.fileName, fileName, DirectoryEntry::MAX_FILE_NAME_LENGTH) == 0){
+                return dirEntryCounter;
+            }
+        }
+    }
+    return dirEntryCounter;
 }
 
 

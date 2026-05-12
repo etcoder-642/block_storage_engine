@@ -6,8 +6,11 @@
 #include <vector>
 
 using namespace std;
+/*
+  Currently the indirectBlock isn't supported for directory inodes
+  It must be supported.
+*/
 
-// A enum class that handle Errors **I need to change this with a template to handle errors better
 enum class AllocError
 {
     OK,
@@ -17,7 +20,6 @@ enum class AllocError
     CANNOT_CREATE_FILE,
 };
 
-// A super block: initial data of the drive that contains essential data
 struct SuperBlock
 {
     static constexpr const char* DISK_EXTENSION = ".fdb";
@@ -37,7 +39,6 @@ struct SuperBlock
     int dataRegionStart = inodeTableStart + (sizeof(Inode) * inodeCount);
 };
 
-// An Inode structure: building blocks of files and directories
 struct Inode
 {
     static constexpr int MAX_DIRECT_BLOCKS = 24; // Maximum number of direct blocks
@@ -56,7 +57,6 @@ struct Inode
 static_assert(sizeof(Inode) == 128, "Inode size mismatch");
 
 
-// A file or dir entry added to a parent dir's block
 struct DirectoryEntry
 {
     static constexpr int MAX_FILE_NAME_LENGTH = 60;
