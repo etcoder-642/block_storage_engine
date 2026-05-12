@@ -732,9 +732,7 @@ void BlockStorageEngine::remove(const string &fileName)
     Inode in = readInode(inodeIndex);
     in.referenceCount--;
     if(in.referenceCount == 0){
-
     }else{
-        
     }
 }
 
