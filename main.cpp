@@ -56,8 +56,8 @@ int main()
     // drive.unmountDisk();
 
     // testing after unmounting
-    drive.mountDisk("test");
-    drive.printFileStructure();
+    // drive.mountDisk("test");
+    // drive.printFileStructure();
 
     // drive.createDirectory("home/bin/test3");
     // drive.createDirectory("home/bin/test3/test4");
@@ -69,7 +69,7 @@ int main()
 
     // drive.removeDirectory("home/bin/test3");
     // drive.printFileStructure();
-    drive.printBitMap();
-    drive.unmountDisk();
+    // drive.printBitMap();
+    // drive.unmountDisk();
     return 0;
 }   

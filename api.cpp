@@ -924,6 +924,7 @@ void BlockStorageEngine::remove(const string &fileName)
     writeInode(in, inodeIndex);
 }
 
+
 void BlockStorageEngine::removeDirectory(const string &path)
 {
     vector<string> parsedPath = parseString(path, '/');
@@ -933,6 +934,8 @@ void BlockStorageEngine::removeDirectory(const string &path)
         cerr << "removeDirectory | Error: Invalid Path" << endl;
         return;
     }
+    string lastElem = parsedPath[parsedPath.size() - 1];
+   
     Inode in = readInode(dirInodeIndex);
     if (!in.isDirectory)
     {
@@ -947,8 +950,7 @@ void BlockStorageEngine::removeDirectory(const string &path)
             DirectoryEntry ent = readDirectoryEntry(j, in.directBlocks[i]);
             if (ent.isAllocated)
             {
-                vector<string> entPath = {path, ent.fileName};
-                string entPathStr = joinString(entPath, '/');
+                string entPathStr = path + "/" + ent.fileName;
                 Inode entInode = readInode(ent.inodeIndex);
 
                 if (entInode.isDirectory)
@@ -958,18 +960,31 @@ void BlockStorageEngine::removeDirectory(const string &path)
                 ent.isAllocated = false;
             }
         }
+    }
+
+    for (int i = 0; i < in.blockCount; i++)
+    {
         freeBlock(in.directBlocks[i]);
         in.directBlocks[i] = -1;
     }
+
+    in.lastBlockUsedBytes = 0;
     in.blockCount = 0;
     in.isAllocated = false;
     in.fileSize = 0;
     in.isDirectory = false;
     writeInode(in, dirInodeIndex);
 
-    string fileName = parsedPath[parsedPath.size() - 1];
-    int dirEntryIndex = findDirEntry(dirInodeIndex, fileName.c_str());
-    freeDirectoryEntry(dirEntryIndex, dirInodeIndex);
+    vector<string> parentPath(parsedPath.begin(), parsedPath.end() - 1);
+    int parentInodeIndex = traversePath(parentPath);
+    if (parentInodeIndex == -1)
+    {
+        cerr << "removeDirectory | Error: Parent Directory Invalid Path" << endl;
+        return;
+    }
+
+    int dirEntryIndex = findDirEntry(parentInodeIndex, lastElem.c_str());
+    freeDirectoryEntry(dirEntryIndex, parentInodeIndex);
 }
 
 // RETRIEVAL OF FILES
@@ -991,7 +1006,6 @@ void BlockStorageEngine::retrieve(const string &fileName, const string &destPath
         cerr << "retrieve | Error: File '" << fileName << "' not found in directory index: " << dirInodeIndex << "!" << endl;
         return;
     }
-    cout << "Inode Index: " << inodeIndex << endl;
     Inode recoveryInode = readInode(inodeIndex);
 
     vector<char> fileData = recoverFile(recoveryInode);
@@ -1027,6 +1041,10 @@ void BlockStorageEngine::link(const string &nfile, const string &efile)
         cout << "link | The file doesn't exist in the specified directory!" << endl;
         return;
     }
+
+    Inode e_inode = readInode(e_inodeIndex);
+    e_inode.referenceCount++;
+    writeInode(e_inode, e_inodeIndex);
 
     vector<string> nPath = parseString(nfile, '/');
     vector<string> n_parentPath(nPath.begin(), nPath.end() - 1);
@@ -1244,8 +1262,3 @@ void BlockStorageEngine::printFileStructure(int dirInodeIndex, int depth)
         }
     }
 }
-
-/*
-    TODO LIST:
-    - Add support for indirect blocks for directories
-*/
