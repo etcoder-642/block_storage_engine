@@ -731,7 +731,7 @@ void BlockStorageEngine::unmountDisk()
 }
 
 // CREATION OR DELETION OF FILES AND DIR'S
-void BlockStorageEngine::save(const string &fileName, const string &filePath)
+void BlockStorageEngine::save(const string &fileName, const string &filePath, int inodeIndex = -1)
 {
     vector<string> parsedPath = parseString(fileName, '/');
     vector<string> parentPath(parsedPath.begin(), parsedPath.end() - 1);
@@ -789,7 +789,14 @@ void BlockStorageEngine::save(const string &fileName, const string &filePath)
 
     // update info saved in the disk
     syncSuperBlock();
-    int freeInodeIndex = findFreeInode();
+    int freeInodeIndex = inodeIndex;
+    if(inodeIndex == -1){
+      freeInodeIndex = findFreeInode();
+    }
+    if(freeInodeIndex == -1){
+      cerr << "Error: Disk is full, cannot save file!" << endl;
+      return;
+    }
     writeInode(fileInode, freeInodeIndex);
     sb.allocatedInodeCount++;
 
@@ -1057,7 +1064,26 @@ void BlockStorageEngine::move(const string &file, const string &dPath)
     freeDirectoryEntry(dirEntryIndex, dirInodeIndex);
 }
 
-
+void BlockStorageEngine::replace(const string &file, const string &newFilePath)
+{
+    vector<string> parsedPath = parseString(file, '/');
+    vector<string> parentPath(parsedPath.begin(), parsedPath.end() - 1);
+    int dirInodeIndex = traversePath(parentPath);
+    if (dirInodeIndex == -1)
+    {
+        cerr << "Error: Invalid Path" << endl;
+        return;
+    }
+    string fileName = parsedPath[parsedPath.size() - 1];
+    int inodeIndex = findInDirectory(fileName.c_str(), dirInodeIndex);
+    if (inodeIndex == -1)
+    {
+        cerr << "Error: File not found!" << endl;
+        return;
+    }
+    remove(fileName);
+    save(fileName, newFilePath, inodeIndex);
+}
 
 /*
     TODO LIST(TOMORROW):

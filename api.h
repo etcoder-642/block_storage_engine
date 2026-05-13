@@ -126,7 +126,7 @@ public:
     void unmountDisk();
 
     // creation or deletion of files/dirs
-    void save(const string &fileName, const string &filePath);
+    void save(const string &fileName, const string &filePath, int inodeIndex = -1);
     void remove(const string &fileName);
     void createDirectory(const string &path);
     void removeDirectory(const string &path); // removes a directory with all it's contents
@@ -139,7 +139,8 @@ public:
     void list(string path);
     void move(const string &file, const string &dPath); // dPath: destination path, file: file to move
     void rename(const string &file, const string &newName); // newName: new file name, file: file to rename
-    void replace(const string &file, const string &newFile); // newFile: new file name, file: file to replace
+    void replace(const string &file, const string &newFilePath); // newFilePath: new file path, file: file to replace
+    void printFileStructure(int dirInodeIndex, int depth = 0);
     void diskInfo();
 };
 
