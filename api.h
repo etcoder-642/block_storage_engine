@@ -30,7 +30,7 @@ struct SuperBlock
     int blockCount = 0;
 
     int bitmapSize = blockCount / 8;
-    int inodeCount = 64;
+    int inodeCount = 0;
     int allocatedInodeCount = 0;
     int freeBlockCount = blockCount;
 
@@ -93,18 +93,19 @@ private:
     int findFreeDirEntry(const int* directBlocks, int blockCount);
     void freeBlock(int index);
     void freeIndirectBlocks(int index);
+    void freeDirectoryEntry(int dirEntryIndex, int dirInodeIndex);
     void allocateBlock(Inode &in, vector<char> &data);
     void allocateIndirectBlock(Inode &in, vector<char> &data, int bytesRemaining);
 
     // read from disk
     vector<char> recoverFile(Inode &in);
     Inode readInode(int inodeIndex);
-    DirectoryEntry readDirectoryEntry(int dirEntryIndex, int blockIndex);
+    DirectoryEntry readDirectoryEntry(int dirEntryOffset, int blockIndex);
 
     // write to disk
     void writeDataToBlock(int blockID, char* dataPtr, int amountToWrite, int& bytesRemaining);
     void writeInode(Inode &in, int inodeIndex);
-    void writeDirEntry(DirectoryEntry &ent, int dirEntryIndex, int blockIndex);
+    void writeDirEntry(DirectoryEntry &ent, int dirEntryOffset, int blockIndex);
     void addDirectoryEntry(const char* fileName, int dirInodeIndex, int targetInodeIndex);
 
     // validation
@@ -134,8 +135,12 @@ public:
     void retrieve(const string &fileName, const string &destPath);
 
     // auxiliary / supporting functions
-    void link(const char* nfile, const char* efile); // nfile: new file name, efile: existing file name
+    void link(const string &nfile, const string &efile); // nfile: new file name, efile: existing file name
     void list(string path);
+    void move(const string &file, const string &dPath); // dPath: destination path, file: file to move
+    void rename(const string &file, const string &newName); // newName: new file name, file: file to rename
+    void replace(const string &file, const string &newFile); // newFile: new file name, file: file to replace
+    void diskInfo();
 };
 
 #endif // API_H
