@@ -580,7 +580,7 @@ int BlockStorageEngine::traversePath(vector<string> path)
     int curInodeIndex = 0;
     for (int i = 0; i < path.size(); i++)
     {
-        Inode in = this->readInode(curInodeIndex);
+        Inode in = readInode(curInodeIndex);
         if (!in.isDirectory)
             return -1;
         for (int j = 0; j < in.blockCount; j++)
@@ -589,7 +589,7 @@ int BlockStorageEngine::traversePath(vector<string> path)
             bool found = false;
             for (int k = 0; k < sb.blockSize / sizeof(DirectoryEntry); k++)
             {
-                DirectoryEntry ent = this->readDirectoryEntry(k, blockIndex);
+                DirectoryEntry ent = readDirectoryEntry(k, blockIndex);
                 if (strncmp(ent.fileName, path[i].c_str(), sizeof(ent.fileName)) == 0)
                 {
                     curInodeIndex = ent.inodeIndex;
@@ -790,12 +790,14 @@ void BlockStorageEngine::save(const string &fileName, const string &filePath, in
     // update info saved in the disk
     syncSuperBlock();
     int freeInodeIndex = inodeIndex;
-    if(inodeIndex == -1){
-      freeInodeIndex = findFreeInode();
+    if (inodeIndex == -1)
+    {
+        freeInodeIndex = findFreeInode();
     }
-    if(freeInodeIndex == -1){
-      cerr << "Error: Disk is full, cannot save file!" << endl;
-      return;
+    if (freeInodeIndex == -1)
+    {
+        cerr << "Error: Disk is full, cannot save file!" << endl;
+        return;
     }
     writeInode(fileInode, freeInodeIndex);
     sb.allocatedInodeCount++;
@@ -989,10 +991,18 @@ void BlockStorageEngine::list(string path)
 {
     vector<string> parsedPath = parseString(path, '/');
     int dirInodeIndex = traversePath(parsedPath);
-    if (dirInodeIndex == -1) { cerr << "Error: Invalid Path" << endl; return; }
-    
+    if (dirInodeIndex == -1)
+    {
+        cerr << "Error: Invalid Path" << endl;
+        return;
+    }
+
     Inode in = readInode(dirInodeIndex);
-    if (!in.isDirectory){ cerr << "Error: Path is not a directory!" << endl; return; }
+    if (!in.isDirectory)
+    {
+        cerr << "Error: Path is not a directory!" << endl;
+        return;
+    }
 
     for (int i = 0; i < in.blockCount; i++)
     {
@@ -1005,19 +1015,6 @@ void BlockStorageEngine::list(string path)
             }
         }
     }
-}
-
-void BlockStorageEngine::diskInfo()
-{
-    cout << "Disk Info:" << endl;
-    cout << "Disk Size: " << calculateTotalSize() << " bytes | " << calculateTotalSize() / 1024 / 1024 << " MB" << endl;
-    cout << "Block Size: " << sb.blockSize << " bytes" << endl;
-    cout << "Block Count: " << sb.blockCount << endl;
-    cout << "Inode Count: " << sb.inodeCount << endl;
-    cout << "Allocated Inode Count: " << sb.allocatedInodeCount << endl;
-    cout << "Free Block Count: " << sb.freeBlockCount << endl;
-    cout << "Bitmap Size: " << sb.bitmapSize << endl;
-    cout << "Bitmap Start: " << sb.bitmapStart << endl;
 }
 
 void BlockStorageEngine::move(const string &file, const string &dPath)
@@ -1064,6 +1061,38 @@ void BlockStorageEngine::move(const string &file, const string &dPath)
     freeDirectoryEntry(dirEntryIndex, dirInodeIndex);
 }
 
+void BlockStorageEngine::rename(const string &file, const string &nName)
+{
+    vector<string> parsedPath = parseString(file, '/');
+    vector<string> parentPath(parsedPath.begin(), parsedPath.end() - 1);
+    int dirInodeIndex = traversePath(parentPath);
+    if (dirInodeIndex == -1)
+    {
+        cerr << "Error: Invalid Path" << endl;
+        return;
+    }
+    string fileName = parsedPath[parsedPath.size() - 1];
+
+    Inode in = readInode(dirInodeIndex);
+    if (!in.isDirectory)
+    {
+        cerr << "Error: Path is not a directory!" << endl;
+        return;
+    }
+
+    int dirEntryIndex = findDirEntry(dirInodeIndex, fileName.c_str());
+    int dirEntryPerBlock = sb.blockSize / sizeof(DirectoryEntry);
+    int dirEntOffset = dirEntryIndex % dirEntryPerBlock;
+    int dirEntBlock = dirEntryIndex / dirEntryPerBlock;
+    int blockIndex = in.directBlocks[dirEntBlock];
+
+    DirectoryEntry ent = readDirectoryEntry(dirEntOffset, blockIndex);
+    strncpy(ent.fileName, nName.c_str(), DirectoryEntry::MAX_FILE_NAME_LENGTH - 1);
+    ent.isAllocated = true;
+    ent.fileName[DirectoryEntry::MAX_FILE_NAME_LENGTH - 1] = '\0';
+    writeDirEntry(ent, dirEntOffset, blockIndex);
+}
+
 void BlockStorageEngine::replace(const string &file, const string &newFilePath)
 {
     vector<string> parsedPath = parseString(file, '/');
@@ -1085,10 +1114,44 @@ void BlockStorageEngine::replace(const string &file, const string &newFilePath)
     save(fileName, newFilePath, inodeIndex);
 }
 
+void BlockStorageEngine::diskInfo()
+{
+    cout << "Disk Info:" << endl;
+    cout << "Disk Size: " << calculateTotalSize() << " bytes | " << calculateTotalSize() / 1024 / 1024 << " MB" << endl;
+    cout << "Block Size: " << sb.blockSize << " bytes" << endl;
+    cout << "Block Count: " << sb.blockCount << endl;
+    cout << "Inode Count: " << sb.inodeCount << endl;
+    cout << "Allocated Inode Count: " << sb.allocatedInodeCount << endl;
+    cout << "Free Block Count: " << sb.freeBlockCount << endl;
+    cout << "Bitmap Size: " << sb.bitmapSize << endl;
+    cout << "Bitmap Start: " << sb.bitmapStart << endl;
+}
+
+void BlockStorageEngine::printFileStructure(int dirInodeIndex = 0, int depth = 0)
+{
+    Inode in = readInode(dirInodeIndex);
+
+    for (int j = 0; j < in.blockCount; j++)
+    {
+        for (int k = 0; k < sb.blockSize / sizeof(DirectoryEntry); k++)
+        {
+            DirectoryEntry ent = readDirectoryEntry(k, in.directBlocks[j]);
+            Inode in = readInode(ent.inodeIndex);
+            if (!in.isDirectory)
+            {
+                for (int i = 0; i < depth; i++) cout << " ";
+                cout << ent.fileName << endl;
+            } else {
+                printFileStructure(ent.inodeIndex, depth + 1);
+            }
+        }
+    }
+}
+
 /*
     TODO LIST(TOMORROW):
     - Add support for indirect blocks for directories
     - Make inode Table size dynamic (currently it's fixed at 64) | DONE
-    - Add support for replacing files
-    - Add support for mv and rename operations
+    - Add support for replacing files | DONE
+    - Add support for mv and rename operations | HALF DONE
 */

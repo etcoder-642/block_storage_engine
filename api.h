@@ -114,7 +114,7 @@ private:
     // search and traversal
     int findInDirectory(const char* fileName, int dirInodeIndex);
     int traversePath(vector<string> path);
-    int findDirEntry(int inodeIndex, const char* fileName);
+    int findDirEntry(int inodeIndex, const char* fileName); // returns dirEntryIndex (not dirEntryOffset)
 
 public:
     // special function for debugging purposes
@@ -138,10 +138,10 @@ public:
     void link(const string &nfile, const string &efile); // nfile: new file name, efile: existing file name
     void list(string path);
     void move(const string &file, const string &dPath); // dPath: destination path, file: file to move
-    void rename(const string &file, const string &newName); // newName: new file name, file: file to rename
-    void replace(const string &file, const string &newFilePath); // newFilePath: new file path, file: file to replace
-    void printFileStructure(int dirInodeIndex, int depth = 0);
+    void rename(const string &file, const string &nName); // nName: new file name, file: file to rename
+    void replace(const string &file, const string &nfilePath); // nfilePath: new file path, file: file to replace
     void diskInfo();
+    void printFileStructure(int dirInodeIndex = 0, int depth = 0);
 };
 
 #endif // API_H
