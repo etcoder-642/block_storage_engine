@@ -59,8 +59,9 @@ static_assert(sizeof(Inode) == 128, "Inode size mismatch");
 
 struct DirectoryEntry
 {
-    static constexpr int MAX_FILE_NAME_LENGTH = 60;
+    static constexpr int MAX_FILE_NAME_LENGTH = 59;
     char fileName[MAX_FILE_NAME_LENGTH] = {0};
+    bool isAllocated = false;
     int inodeIndex;
 };
 
@@ -76,11 +77,12 @@ private:
 
     // bitmap operations
     bool isBlockFree(int index);
-    void setBlockOccupied(int index);
+    void setBitOccupied(int index);
+    void setBitFree(int index);
 
     // disk geometry and formatting
     long calculateTotalSize();
-    void formatDisk();
+    void formatDisk(int size, int initialPos = 0);
     void syncSuperBlock();
     void updateSbInfo();
     void updateBitMap();
@@ -88,6 +90,9 @@ private:
     // allocation
     int findFreeBlock();
     int findFreeInode();
+    int findFreeDirEntry(const int* directBlocks, int blockCount);
+    void freeBlock(int index);
+    void freeIndirectBlocks(int index);
     void allocateBlock(Inode &in, vector<char> &data);
     void allocateIndirectBlock(Inode &in, vector<char> &data, int bytesRemaining);
 
@@ -99,6 +104,7 @@ private:
     // write to disk
     void writeDataToBlock(int blockID, char* dataPtr, int amountToWrite, int& bytesRemaining);
     void writeInode(Inode &in, int inodeIndex);
+    void writeDirEntry(DirectoryEntry &ent, int dirEntryIndex, int blockIndex);
     void addDirectoryEntry(const char* fileName, int dirInodeIndex, int targetInodeIndex);
 
     // validation
@@ -122,14 +128,14 @@ public:
     void save(const string &fileName, const string &filePath);
     void remove(const string &fileName);
     void createDirectory(const string &path);
-    // void removeDirectory(const string &path); // removes a directory with all it's contents
+    void removeDirectory(const string &path); // removes a directory with all it's contents
 
     // retrieval of files
     void retrieve(const string &fileName, const string &destPath);
 
     // auxiliary / supporting functions
-    void link(const char* fileN, const char* sfileN);
-    void list();
+    void link(const char* nfile, const char* efile); // nfile: new file name, efile: existing file name
+    void list(string path);
 };
 
 #endif // API_H
