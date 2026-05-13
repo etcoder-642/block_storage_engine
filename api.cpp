@@ -966,6 +966,10 @@ void BlockStorageEngine::removeDirectory(const string &path)
     in.fileSize = 0;
     in.isDirectory = false;
     writeInode(in, dirInodeIndex);
+
+    string fileName = parsedPath[parsedPath.size() - 1];
+    int dirEntryIndex = findDirEntry(dirInodeIndex, fileName.c_str());
+    freeDirectoryEntry(dirEntryIndex, dirInodeIndex);
 }
 
 // RETRIEVAL OF FILES
