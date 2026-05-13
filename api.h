@@ -20,6 +20,23 @@ enum class AllocError
     CANNOT_CREATE_FILE,
 };
 
+struct Inode
+{
+    static constexpr int MAX_DIRECT_BLOCKS = 24; // Maximum number of direct blocks
+    int fileSize = 0;
+    int blockCount = 0;
+    int directBlocks[MAX_DIRECT_BLOCKS] = {-1};
+    int lastBlockUsedBytes = 0; // To track how many bytes are used in the last block
+
+    // points to a block that contains blockIndexes of data.
+    int indirectBlocks = -1;
+    bool isDirectory = false;
+    bool isAllocated = false;
+    int referenceCount = 0;
+    char padding[8] = {0}; // Padding to ensure the struct is exactly 128 bytes
+};
+static_assert(sizeof(Inode) == 128, "Inode size mismatch");
+
 struct SuperBlock
 {
     static constexpr const char* DISK_EXTENSION = ".fdb";
@@ -38,23 +55,6 @@ struct SuperBlock
     int inodeTableStart = bitmapStart + bitmapSize;
     int dataRegionStart = inodeTableStart + (sizeof(Inode) * inodeCount);
 };
-
-struct Inode
-{
-    static constexpr int MAX_DIRECT_BLOCKS = 24; // Maximum number of direct blocks
-    int fileSize = 0;
-    int blockCount = 0;
-    int directBlocks[MAX_DIRECT_BLOCKS] = {-1};
-    int lastBlockUsedBytes = 0; // To track how many bytes are used in the last block
-
-    // points to a block that contains blockIndexes of data.
-    int indirectBlocks = -1;
-    bool isDirectory = false;
-    bool isAllocated = false;
-    int referenceCount = 0;
-    char padding[8] = {0}; // Padding to ensure the struct is exactly 128 bytes
-};
-static_assert(sizeof(Inode) == 128, "Inode size mismatch");
 
 
 struct DirectoryEntry
@@ -85,14 +85,13 @@ private:
     void formatDisk(int size, int initialPos = 0);
     void syncSuperBlock();
     void updateSbInfo();
-    void updateBitMap();
 
     // allocation
     int findFreeBlock();
     int findFreeInode();
     int findFreeDirEntry(const int* directBlocks, int blockCount);
     void freeBlock(int index);
-    void freeIndirectBlocks(int index);
+    void freeIndirectBlocks(int index, int usedCount);
     void freeDirectoryEntry(int dirEntryIndex, int dirInodeIndex);
     void allocateBlock(Inode &in, vector<char> &data);
     void allocateIndirectBlock(Inode &in, vector<char> &data, int bytesRemaining);
@@ -112,9 +111,9 @@ private:
     void preSaveCheck(long dataSize);
 
     // search and traversal
-    int findInDirectory(const char* fileName, int dirInodeIndex);
+    int findInDirectory(const char* entityName, int dirInodeIndex);
     int traversePath(vector<string> path);
-    int findDirEntry(int inodeIndex, const char* fileName); // returns dirEntryIndex (not dirEntryOffset)
+    int findDirEntry(int dirInodeIndex, const char* fileName); // returns dirEntryIndex (not dirEntryOffset)
 
 public:
     // special function for debugging purposes
