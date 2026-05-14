@@ -6,7 +6,7 @@
 #include <cstring>
 namespace fs = std::filesystem;
 
-#include "api.h"
+#include "../include/api.h"
 
 using namespace std;
 
@@ -191,7 +191,7 @@ int BlockStorageEngine::findFreeBlock()
 
 int BlockStorageEngine::findFreeInode()
 {
-    for (size_t i = 0; i < sb.inodeCount; i++)
+    for (int i = 0; i < sb.inodeCount; i++)
     {
         Inode in = readInode(i);
         if (!in.isAllocated)
@@ -209,7 +209,7 @@ int BlockStorageEngine::findFreeDirEntry(const int *directBlocks, int blockCount
     int index = 0;
     for (int i = 0; i < blockCount; i++)
     {
-        for (int j = 0; j < sb.blockSize / sizeof(DirectoryEntry); j++)
+        for (long unsigned int j = 0; j < sb.blockSize / sizeof(DirectoryEntry); j++)
         {
             DirectoryEntry ent;
             long pos = sb.dataRegionStart + (directBlocks[i] * sb.blockSize) + (j * sizeof(DirectoryEntry));
@@ -285,13 +285,12 @@ void BlockStorageEngine::allocateBlock(Inode &in, vector<char> &data)
 
     char *dataPtr = data.data();
     int bytesRemaining = data.size();
-    long writeLocation = 0;
     int blockSize = sb.blockSize;
     while (bytesRemaining > 0)
     {
         int amountToWrite = (blockSize < bytesRemaining) ? blockSize : bytesRemaining;
 
-        int freeBlockID = this->findFreeBlock();
+        int freeBlockID = findFreeBlock();
         if (freeBlockID == -1)
         {
             cerr << "allocateBlock | Error: Disk is full, cannot allocate more blocks!" << endl;
@@ -331,7 +330,7 @@ void BlockStorageEngine::allocateIndirectBlock(Inode &in, vector<char> &data, in
             return;
         }
 
-        int blocksInTheIndirectBlock = in.blockCount - Inode::MAX_DIRECT_BLOCKS;
+        long unsigned int blocksInTheIndirectBlock = in.blockCount - Inode::MAX_DIRECT_BLOCKS;
         if (blocksInTheIndirectBlock >= sb.blockSize / sizeof(int))
         {
             cout << "allocateIndirectBlock | Error: indirect block full, file too large!" << endl;
@@ -572,7 +571,7 @@ int BlockStorageEngine::findInDirectory(const char *entityName, int dirInodeInde
         {
             blockSize = in.lastBlockUsedBytes;
         }
-        for (int j = 0; j < blockSize / sizeof(DirectoryEntry); j++)
+        for (long unsigned int j = 0; j < blockSize / sizeof(DirectoryEntry); j++)
         {
             DirectoryEntry entry;
             disk.seekg(sb.dataRegionStart + (in.directBlocks[i] * sb.blockSize) + (j * sizeof(DirectoryEntry)), ios::beg);
@@ -592,7 +591,7 @@ int BlockStorageEngine::traversePath(vector<string> path)
 {
     disk.clear();
     int curInodeIndex = 0;
-    for (int i = 0; i < path.size(); i++)
+    for (size_t i = 0; i < path.size(); i++)
     {
         Inode in = readInode(curInodeIndex);
         if (!in.isDirectory)
@@ -601,7 +600,7 @@ int BlockStorageEngine::traversePath(vector<string> path)
         {
             int blockIndex = in.directBlocks[j];
             bool found = false;
-            for (int k = 0; k < sb.blockSize / sizeof(DirectoryEntry); k++)
+            for (long unsigned int k = 0; k < sb.blockSize / sizeof(DirectoryEntry); k++)
             {
                 DirectoryEntry ent = readDirectoryEntry(k, blockIndex);
                 if (strncmp(ent.fileName, path[i].c_str(), sizeof(ent.fileName)) == 0)
@@ -632,7 +631,7 @@ int BlockStorageEngine::findDirEntry(int dirInodeIndex, const char *fileName)
     }
     for (int i = 0; i < in.blockCount; i++)
     {
-        for (int j = 0; j < sb.blockSize / sizeof(DirectoryEntry); j++)
+        for (long unsigned int j = 0; j < sb.blockSize / sizeof(DirectoryEntry); j++)
         {
             dirEntryCounter++;
             DirectoryEntry ent = readDirectoryEntry(j, in.directBlocks[i]);
@@ -945,7 +944,7 @@ void BlockStorageEngine::removeDirectory(const string &path)
 
     for (int i = 0; i < in.blockCount; i++)
     {
-        for (int j = 0; j < sb.blockSize / sizeof(DirectoryEntry); j++)
+        for (long unsigned int j = 0; j < sb.blockSize / sizeof(DirectoryEntry); j++)
         {
             DirectoryEntry ent = readDirectoryEntry(j, in.directBlocks[i]);
             if (ent.isAllocated)
@@ -1078,7 +1077,7 @@ void BlockStorageEngine::list(string path)
 
     for (int i = 0; i < in.blockCount; i++)
     {
-        for (int j = 0; j < sb.blockSize / sizeof(DirectoryEntry); j++)
+        for (long unsigned int j = 0; j < sb.blockSize / sizeof(DirectoryEntry); j++)
         {
             DirectoryEntry ent = readDirectoryEntry(j, in.directBlocks[i]);
             if (ent.isAllocated)
@@ -1197,10 +1196,6 @@ void BlockStorageEngine::replace(const string &file, const string &newFilePath)
         cerr << "replace | Error: DirEntry of file not found! file: " << fileName << endl;
         return;
     }
-    int dirEntryPerBlock = sb.blockSize / sizeof(DirectoryEntry);
-    int dirEntOffset = dirEntryIndex % dirEntryPerBlock;
-    int dirEntBlock = dirEntryIndex / dirEntryPerBlock;
-    int blockIndex = in.directBlocks[dirEntBlock];
 
     vector<string> newPathParsed = parseString(newFilePath, '/');
     string newFileName = newPathParsed[newPathParsed.size() - 1];
@@ -1240,7 +1235,7 @@ void BlockStorageEngine::printFileStructure(int dirInodeIndex, int depth)
 
     for (int j = 0; j < in.blockCount; j++)
     {
-        for (int k = 0; k < sb.blockSize / sizeof(DirectoryEntry); k++)
+        for (long unsigned int k = 0; k < sb.blockSize / sizeof(DirectoryEntry); k++)
         {
             DirectoryEntry ent = readDirectoryEntry(k, in.directBlocks[j]);
             if (!ent.isAllocated)

@@ -103,7 +103,7 @@ drive.printBitMap();              // raw bitmap state
 
 ---
 
-## Limitations
+## Things to work on in the near future
 
 - Directory inodes do not support indirect blocks (max ~384 entries per directory)
 - Single level of indirection (no double/triple indirect blocks)
@@ -114,13 +114,21 @@ drive.printBitMap();              // raw bitmap state
 
 ## Building
 
+**Requirements:** g++ with C++17 support
+
 ```bash
-g++ -std=c++17 -o main main.cpp api.cpp
+git clone https://github.com/etcoder-642/block_storage_engine.git
+cd block_storage_engine
+make
 ./main
 ```
 
----
+To clean the build:
+```bash
+make clean
+```
 
+---
 ## File extension
 
 `.fdb` — ForgeDB disk image
