@@ -132,3 +132,8 @@ make clean
 ## File extension
 
 `.fdb` — ForgeDB disk image
+
+## Author
+
+[Manasseh Samuel](https://github.com/etcoder-642)
+Aspiring Systems Engineer.
