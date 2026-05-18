@@ -1,5 +1,5 @@
 CXX = g++
-CXXFLAGS = -std=c++17 -Wall -Iinclude
+CXXFLAGS = -std=c++20 -Wall -Iinclude
 TARGET = main
 SRCS = src/main.cpp src/api.cpp
 
