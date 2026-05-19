@@ -133,9 +133,7 @@ drive.printBitMap();              // raw bitmap state
 ## Things to work on in the near future
 
 - **ForgeDB integration** — block_storage_engine currently gives you a real filesystem: blocks, inodes, directories. 
-The next step is building ForgeDB on top of it, a single-file embeddable key-value store where you address binary data using filesystem-style paths (like /assets/hero.png or /saves/slot1). 
-Without using any server, SQL or schema. You link one library, open a .fdb file, and read or write blobs. It is mildly similar with SQLite, but for raw binary assets instead of tables and rows. BSE is the engine under the hood; ForgeDB is what developers actually ship.
-It will have a C-stle API, 
+The next step is building ForgeDB on top of it.
 
 - **Directory inode scaling** — Right now each directory can hold roughly 384 entries before running out of space. That's fine for most use cases, but adding indirect block support would remove the ceiling entirely, the same way large file support works.
 
