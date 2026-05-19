@@ -6,8 +6,10 @@
 #include <vector>
 #include <source_location>
 
-namespace bse {
-    enum class ErrorCode {
+namespace bse
+{
+    enum class ErrorCode
+    {
         // filesystem errors
         CANNOT_CREATE_FILE,
         HOME_ENVIRONMENT_VARIABLE_NOT_FOUND,
@@ -17,6 +19,8 @@ namespace bse {
         DISK_NOT_MOUNTED,
         DISK_CORRUPTED,
         DISK_ALREADY_EXISTS,
+        DISK_DOES_NOT_EXIST,
+        DISK_ALREADY_MOUNTED,
 
         // block errors
         BLOCK_NOT_FOUND,
@@ -59,13 +63,15 @@ namespace bse {
         UNKNOWN
     };
 
-    struct StackFrame {
+    struct StackFrame
+    {
         std::string function;
         std::string file;
         uint32_t line;
     };
 
-    struct BSError {
+    struct BSError
+    {
         ErrorCode code;
         std::string message;
         std::string suggestion;
@@ -75,15 +81,28 @@ namespace bse {
 
         BSError(ErrorCode code, std::string message, std::string suggestion = "", std::string context = "") : code(code), message(message), suggestion(suggestion) {}
 
-        void pushFrame(const std::source_location &loc) {
+        void pushFrame(const std::source_location &loc)
+        {
             stackTrace.push_back(StackFrame{
                 loc.function_name(),
                 loc.file_name(),
-                loc.line()
-            });
+                loc.line()});
+        }
+
+        void printStackTrace() const
+        {
+            std::cerr << "  Trace (most recent last):\n";
+            for (const auto &f : stackTrace)
+                std::cerr << "    → " << f.function << " (" << f.file << ":" << f.line << ")\n";
+        }
+
+        static BSError make(ErrorCode code, std::string message, std::string suggestion = "", std::string context = "", std::source_location loc = std::source_location::current())
+        {
+            BSError e(code, message, suggestion, context);
+            e.pushFrame(loc);
+            return e;
         }
     };
 }
-
 
 #endif

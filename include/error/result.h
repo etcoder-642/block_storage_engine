@@ -9,117 +9,150 @@
 
 #include "error.h"
 
+namespace bse
+{
+    template <typename T>
+    class Result
+    {
+    private:
+        std::variant<T, BSError> data;
 
-namespace bse {
-    template<typename T>
-    class Result {
-        private:
-            std::variant<T, BSError> data;
+        Result() = default;
 
-            Result() = default;
-        public:
-            // Factory methods
-            // Factory methods
-            static Result<T> Ok(T value) {
-                Result r;
-                r.data = std::move(value);
-                return r;
-            }
+    public:
+        // Factory methods
+        // Factory methods
+        static Result<T> Ok(T value)
+        {
+            Result r;
+            r.data = std::move(value);
+            return r;
+        }
 
-            static Result<T> Err(ErrorCode code, std::string message, std::string suggestion = "") {
-                Result r;
-                r.data = BSError(code, message, suggestion);
-                return r;
-            }
+        static Result<T> Err(ErrorCode code, std::string message, std::string suggestion = "")
+        {
+            Result r;
+            r.data = BSError(code, message, suggestion);
+            return r;
+        }
 
-            static Result<T> Err(BSError err) {
-                Result r;
-                r.err_ = err;
-                return r;
-            }
+        static Result<T> Err(BSError err)
+        {
+            Result r;
+            r.data = err;
+            return r;
+        }
 
-            // State Checks
-            bool isOk() const {
-                return std::holds_alternative<T>(data);
-            }
+        // State Checks
+        bool isOk() const
+        {
+            return std::holds_alternative<T>(data);
+        }
 
-            bool isErr() const {
-                return std::holds_alternative<FSError>(data);
-            }
+        bool isErr() const
+        {
+            return std::holds_alternative<BSError>(data);
+        }
 
-            // Extraction
-            T unwrap() {
-                return std::get<T>(data);
-            }
+        // Extraction
+        T unwrap()
+        {
+            return std::get<T>(data);
+        }
 
-            BSError unwrapErr() {
-                return std::get<FSError>(data);
-            }
+        BSError unwrapErr()
+        {
+            return std::get<BSError>(data);
+        }
 
-            ErrorCode getErrCode() {
-                return std::get<FSError>(data).code;
-            }
+        ErrorCode getErrCode()
+        {
+            return std::get<BSError>(data).code;
+        }
 
-            std::string getErrMessage() {
-                return std::get<FSError>(data).message;
-            }
+        std::string getErrMessage()
+        {
+            return std::get<BSError>(data).message;
+        }
 
-            std::string getErrSuggestion() {
-                return std::get<FSError>(data).suggestion;
-            }
+        std::string getErrSuggestion()
+        {
+            return std::get<BSError>(data).suggestion;
+        }
+
+        void printStackTrace()
+        {
+            data.value().printStackTrace();
+        }
     };
 
     // Void Specialization
-    template<>
-    class Result<void> {
-        private:
-            std::optional<BSError> err_;
+    template <>
+    class Result<void>
+    {
+    private:
+        std::optional<BSError> err_;
 
-            Result() = default;
-        public:
-            // Factory methods
-            // Factory methods
-            static Result<void> Ok() {
-                return Result{};
-            }
+        Result() = default;
 
-            static Result<void> Err(ErrorCode code, std::string message, std::string suggestion = "") {
-                Result r;
-                r.err_ = BSError(code, message, suggestion);
-                return r;
-            }
+    public:
+        // Factory methods
+        // Factory methods
+        static Result<void> Ok()
+        {
+            return Result{};
+        }
 
-            static Result<void> Err(BSError err) {
-                Result r;
-                r.err_ = err;
-                return r;
-            }
+        static Result<void> Err(ErrorCode code, std::string message, std::string suggestion = "")
+        {
+            Result r;
+            r.err_ = BSError(code, message, suggestion);
+            return r;
+        }
 
-            // State Checks
-            bool isOk() const {
-                return !err_.has_value();
-            }
+        static Result<void> Err(BSError err)
+        {
+            Result r;
+            r.err_ = err;
+            return r;
+        }
 
-            bool isErr() const {
-                return err_.has_value();
-            }
+        // State Checks
+        bool isOk() const
+        {
+            return !err_.has_value();
+        }
 
-            // Extraction
-            BSError unwrapErr() {
-                return err_.value();
-            }
+        bool isErr() const
+        {
+            return err_.has_value();
+        }
 
-            ErrorCode getErrCode() {
-                return err_.value().code;
-            }
+        // Extraction
+        BSError unwrapErr()
+        {
+            return err_.value();
+        }
 
-            std::string getErrMessage() {
-                return err_.value().message;
-            }
+        ErrorCode getErrCode()
+        {
+            return err_.value().code;
+        }
 
-            std::string getErrSuggestion() {
-                return err_.value().suggestion;
-            }
+        std::string getErrMessage()
+        {
+            return err_.value().message;
+        }
+
+        std::string getErrSuggestion()
+        {
+            return err_.value().suggestion;
+        }
+
+        void printStackTrace()
+        {
+            err_.value().printStackTrace();
+        }
     };
 }
 

@@ -20,9 +20,8 @@ namespace bse
     class BlockStorageEngine
     {
     private:
-        fstream disk;
+        std::fstream disk;
         SuperBlock sb;
-        AllocError allocError = AllocError::OK;
 
         // bitmap operations
         Result<void> isBlockFree(int index);
@@ -42,7 +41,7 @@ namespace bse
 
         Result<void> freeBlock(int index);
         Result<void> freeIndirectBlocks(int index, int usedCount);
-        void freeDirectoryEntry(int dirEntryIndex, int dirInodeIndex);
+        Result<void> freeDirectoryEntry(int dirEntryIndex, int dirInodeIndex);
         Result<void> allocateBlock(Inode &in, std::vector<char> &data);
         Result<void> allocateIndirectBlock(Inode &in, std::vector<char> &data, int bytesRemaining);
 

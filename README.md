@@ -2,6 +2,33 @@
 
 A UNIX-like file system implemented from scratch in C++. BSE simulates a block-based disk with a superblock, bitmap, inode table, and data region — all stored in a single binary file on the host machine.
 
+## Why am I building this?
+
+This project exists because I'm trying to build something called ForgeDB.
+
+Here's the problem I kept running into: game devs, embedded engineers, and tool builders
+ship projects with hundreds of loose files, textures, configs, save data, assets. They're
+scattered everywhere, hard to bundle, hard to version, and a pain to distribute. There's
+no clean solution for just "put all my binary stuff in one portable file."
+
+ForgeDB is my answer to that. It's a single-file embeddable key-value store where you
+address your data using filesystem-style paths. You write a blob at `/assets/hero.png`,
+read it back later, list everything under `/saves/`, delete entries. No SQL, no schema,
+no server process running in the background. You link one library and you're done.
+
+SQLite solved this for structured data. ForgeDB is trying to solve it for binary assets.
+
+But ForgeDB needs a real filesystem underneath it to actually work, something that handles
+blocks, inodes, directories, and disk layout properly. That's what block_storage_engine is.
+I'm building the engine first so the thing on top of it is built on something solid.
+
+One thing that genuinely excites me about ForgeDB: it'll ship with a terminal UI so you
+can browse and manage your `.fdb` file using the same commands you already know. `ls`,
+`cd`, `cat`. Your data, but navigable like a real directory tree, without extracting
+anything.
+
+That's where this is all going.
+
 ---
 
 ## Architecture
@@ -105,11 +132,14 @@ drive.printBitMap();              // raw bitmap state
 
 ## Things to work on in the near future
 
-- Directory inodes do not support indirect blocks (max ~384 entries per directory)
-- Single level of indirection (no double/triple indirect blocks)
-- No permissions, timestamps, or user/group metadata
-- No journaling or crash recovery
+- **ForgeDB integration** — block_storage_engine currently gives you a real filesystem: blocks, inodes, directories. 
+The next step is building ForgeDB on top of it, a single-file embeddable key-value store where you address binary data using filesystem-style paths (like /assets/hero.png or /saves/slot1). 
+Without using any server, SQL or schema. You link one library, open a .fdb file, and read or write blobs. It is mildly similar with SQLite, but for raw binary assets instead of tables and rows. BSE is the engine under the hood; ForgeDB is what developers actually ship.
+It will have a C-stle API, 
 
+- **Directory inode scaling** — Right now each directory can hold roughly 384 entries before running out of space. That's fine for most use cases, but adding indirect block support would remove the ceiling entirely, the same way large file support works.
+
+- **Crash recovery with WAL** — If the process dies mid-write, the disk can end up in a corrupt state. A Write-Ahead Log fixes this: every change is recorded to a log before it's applied, so after a crash the filesystem can replay or roll back cleanly. This is how production databases stay safe.
 ---
 
 ## Building
