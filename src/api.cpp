@@ -142,6 +142,7 @@ void BlockStorageEngine::setBitOccupied(int bitPosition)
     disk.seekp(sb.bitmapStart + (bitPosition / 8), ios::beg);
     disk.write(reinterpret_cast<char *>(&bitnum), sizeof(unsigned char));
     disk.flush(); // Ensure the updated bitmap is written to disk
+    return;
 }
 
 void BlockStorageEngine::setBitFree(int bitPosition)
@@ -157,6 +158,7 @@ void BlockStorageEngine::setBitFree(int bitPosition)
     disk.seekp(sb.bitmapStart + (bitPosition / 8), ios::beg);
     disk.write(reinterpret_cast<char *>(&bitnum), sizeof(unsigned char));
     disk.flush(); // Ensure the updated bitmap is written to disk
+    return;
 }
 
 // DISK GEOMERTY AND FORMATTING
@@ -178,6 +180,7 @@ void BlockStorageEngine::formatDisk(int size, int initialPos)
     {
         disk.write(reinterpret_cast<char *>(&zero), sb.blockSize);
     }
+    return;
 }
 
 // syncs in-memory superBlock data with the disk
@@ -186,6 +189,7 @@ void BlockStorageEngine::syncSuperBlock()
     disk.seekp(0, ios::beg);
     disk.write(reinterpret_cast<char *>(&sb), sizeof(SuperBlock));
     disk.flush();
+    return;
 }
 
 // recalculates all superblock fields — because properties are interdependent
@@ -199,6 +203,7 @@ void BlockStorageEngine::updateSbInfo()
 
     sb.inodeTableStart = sb.bitmapStart + sb.bitmapSize;
     sb.dataRegionStart = sb.inodeTableStart + (sizeof(Inode) * sb.inodeCount);
+    return;
 }
 
 // ALLOCATION
@@ -283,6 +288,7 @@ Result<void> BlockStorageEngine::freeDirectoryEntry(int dirEntryIndex, int dirIn
     ent.inodeIndex = -1;
     ent.fileName[0] = '\0';
     TEST(writeDirEntry(ent, dirEntOffset, blockIndex));
+    return Result<void>::Ok();
 }
 
 Result<void> BlockStorageEngine::freeBlock(int index)
@@ -1089,6 +1095,7 @@ Result<void> BlockStorageEngine::retrieve(const string &fileName, const string &
     }
     output.write(fileData.data(), fileData.size());
     output.close();
+    return Result<void>::Ok();
 }
 
 // AUXILIARY FUNCTIONS
@@ -1144,20 +1151,22 @@ Result<void> BlockStorageEngine::move(const string &file, const string &dPath)
 {
     vector<string> parsedPath = parseString(file, '/');
     vector<string> parentPath(parsedPath.begin(), parsedPath.end() - 1);
+
     int dirInodeIndex = TRY(traversePath(parentPath), void);
     string fileName = parsedPath[parsedPath.size() - 1];
-
     int dirEntryIndex = TRY(findDirEntry(dirInodeIndex, fileName.c_str()), void);
+
     int inodeIndex = TRY(findInDirectory(fileName.c_str(), dirInodeIndex), void);
 
     vector<string> dPathParsed = parseString(dPath, '/');
     vector<string> dParentPath(dPathParsed.begin(), dPathParsed.end());
-    int dDirInodeIndex = TRY(traversePath(dParentPath), void);
 
+    int dDirInodeIndex = TRY(traversePath(dParentPath), void);
     Inode dInode = TRY(readInode(dDirInodeIndex), void);
 
     TEST(addDirectoryEntry(fileName.c_str(), dDirInodeIndex, inodeIndex));
-    freeDirectoryEntry(dirEntryIndex, dirInodeIndex);
+
+    TEST(freeDirectoryEntry(dirEntryIndex, dirInodeIndex));
     cout << "File moved from '" << file << "' to '" << dPath << "'!" << endl;
 
     return Result<void>::Ok();
@@ -1243,23 +1252,17 @@ void BlockStorageEngine::diskInfo()
     cout << "Free Block Count: " << sb.freeBlockCount << endl;
     cout << "Bitmap Size: " << sb.bitmapSize << endl;
     cout << "Bitmap Start: " << sb.bitmapStart << endl;
+    return;
 }
 
 Result<void> BlockStorageEngine::printFileStructure(int dirInodeIndex, int depth)
 {
     Inode in = TRY(readInode(dirInodeIndex), void);
-
-    cerr << "[depth=" << depth << "] inode=" << dirInodeIndex
-         << " blockCount=" << in.blockCount
-         << " lastBlockUsedBytes=" << in.lastBlockUsedBytes << "\n";
-
     for (int j = 0; j < in.blockCount; j++)
     {
         size_t entriesInBlock = (j == in.blockCount - 1)
                                     ? in.lastBlockUsedBytes / sizeof(DirectoryEntry)
                                     : sb.blockSize / sizeof(DirectoryEntry);
-        cerr << "  block[" << j << "]=" << in.directBlocks[j]
-             << " entriesInBlock=" << entriesInBlock << "\n";
 
         for (long unsigned int k = 0; k < entriesInBlock; k++)
         {
@@ -1277,11 +1280,12 @@ Result<void> BlockStorageEngine::printFileStructure(int dirInodeIndex, int depth
             {
                 for (int i = 0; i < depth; i++)
                     cout << "  ";
-                cout << ent.fileName << "/" << endl;
+                cout << ent.fileName << endl;
                 printFileStructure(ent.inodeIndex, depth + 1);
             }
         }
     }
+    return Result<void>::Ok();
 }
 
 #undef TRY
